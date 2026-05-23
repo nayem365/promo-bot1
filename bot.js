@@ -31,8 +31,7 @@ function saveUser(ctx) {
   users.set(String(ctx.from.id), {
     id: String(ctx.from.id),
     first_name: ctx.from.first_name || '',
-    username: ctx.from.username || '',
-    last_seen: new Date().toISOString()
+    username: ctx.from.username || ''
   });
 }
 
@@ -100,6 +99,13 @@ function escapeXml(text) {
     .replace(/"/g, '&quot;');
 }
 
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 async function getBannerUrls(lang, category = 'all') {
   if (!BANNER_BASE_URL) throw new Error('BANNER_BASE_URL missing');
 
@@ -126,7 +132,7 @@ async function getBannerUrls(lang, category = 'all') {
 async function downloadBuffer(url) {
   const res = await axios.get(url, {
     responseType: 'arraybuffer',
-    timeout: 12000,
+    timeout: 3500,
     validateStatus: s => s >= 200 && s < 300
   });
 
@@ -136,13 +142,15 @@ async function downloadBuffer(url) {
 function getTextSettings(width, promoCode) {
   const len = promoCode.length;
 
-  let fontSize = width * 0.083;
-  if (len > 10) fontSize = width * 0.073;
-  if (len > 13) fontSize = width * 0.064;
+  let fontSize = width * 0.088;
+
+  if (len >= 9) fontSize = width * 0.078;
+  if (len >= 11) fontSize = width * 0.068;
+  if (len >= 14) fontSize = width * 0.058;
 
   return {
-    fontSize: Math.max(46, Math.min(fontSize, 108)),
-    y: '92.5%'
+    fontSize: Math.max(50, Math.min(fontSize, 108)),
+    y: '91.8%'
   };
 }
 
@@ -153,14 +161,13 @@ async function addPromoText(inputBuffer, promoCode) {
   const width = meta.width || 1080;
   const height = meta.height || 1080;
   const { fontSize, y } = getTextSettings(width, promoCode);
-
   const text = escapeXml(promoCode);
 
   const svg = `
   <svg width="${width}" height="${height}">
     <defs>
       <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="7" stdDeviation="5" flood-color="#000000" flood-opacity="0.90"/>
+        <feDropShadow dx="0" dy="6" stdDeviation="4" flood-color="#000000" flood-opacity="0.95"/>
       </filter>
     </defs>
 
@@ -174,28 +181,105 @@ async function addPromoText(inputBuffer, promoCode) {
       font-weight="900"
       fill="#ffffff"
       stroke="#000000"
-      stroke-width="7"
+      stroke-width="6"
       paint-order="stroke fill"
-      letter-spacing="2.5"
+      letter-spacing="2"
       filter="url(#shadow)"
     >${text}</text>
   </svg>`;
 
   return image
     .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
-    .jpeg({ quality: 92, mozjpeg: true })
+    .jpeg({ quality: 88, mozjpeg: true })
     .toBuffer();
 }
 
 async function processOneBanner(url, promoCode, index) {
   try {
     const raw = await downloadBuffer(url);
-    const finalImage = await addPromoText(raw, promoCode);
-    return { ok: true, image: finalImage, index, url };
+    const image = await addPromoText(raw, promoCode);
+    return { ok: true, image, index };
   } catch (error) {
-    console.log('Banner failed:', url, error.message);
-    return { ok: false, index, url, error: error.message };
+    return { ok: false, index, url };
   }
+}
+
+function promoMessage(lang, promoCode) {
+  const promo = `<b>${escapeHtml(promoCode)}</b>`;
+
+  if (lang === 'bn') {
+    return `🤝 <b>7starswin Affiliate Program</b> — আপনার ট্রাফিককে রূপান্তর করুন লাইফটাইম উপার্জনে!
+
+আপনি কি আপনার ট্রাফিক থেকে সর্বোচ্চ রেভিনিউ জেনারেট করতে চান? বিশ্বের অন্যতম বিশ্বস্ত বুকমেকার কোম্পানি <b>7starswin</b>-এর সাথে পার্টনার হিসেবে যোগ দিন!
+
+<b>আমরা আপনার প্লেয়ারদের জন্য দিচ্ছি আকর্ষণীয় অফার:</b>
+🎁 প্লেয়ার বোনাস: প্রথম ডিপোজিটে ১০,০০০ টাকা পর্যন্ত ১০০% বোনাস!
+🔥 প্লেয়ার প্রোমো কোড: ${promo}
+📞 সাপোর্ট: ২৪ ঘণ্টা ডেডিকেটেড প্লেয়ার সাপোর্ট।
+
+<b>📉 অ্যাফিলিয়েট হিসেবে আপনার সুবিধা:</b>
+✅ মার্কেট সেরা আকর্ষণীয় রেভিনিউ শেয়ার ডিল
+✅ সময়মতো এবং শতভাগ নিরাপদ পেমেন্ট উইথড্রয়াল
+✅ ট্র্যাকিং এবং মার্কেটিং ম্যাটেরিয়ালসের সম্পূর্ণ অ্যাক্সেস
+
+📲 আপনার প্রোমো কোড ${promo} ব্যবহার করে আজই ট্রাফিক ড্রাইভ করা শুরু করুন!
+
+<b>অ্যাপ ডাউনলোড লিংক:</b> 👇`;
+  }
+
+  if (lang === 'hi') {
+    return `🤝 <b>7starswin Affiliate Program</b> — अपने ट्रैफिक को लाइफटाइम कमाई में बदलें!
+
+<b>Player Offer:</b>
+🎁 First deposit पर 10,000 तक 100% bonus!
+🔥 Promo Code: ${promo}
+📞 24/7 dedicated player support.
+
+<b>Affiliate Benefits:</b>
+✅ Attractive revenue share deal
+✅ Secure and on-time payments
+✅ Full tracking and marketing materials access
+
+📲 Promo code ${promo} से आज ही traffic drive करना शुरू करें!
+
+<b>App download link:</b> 👇`;
+  }
+
+  if (lang === 'pk') {
+    return `🤝 <b>7starswin Affiliate Program</b> — اپنی ٹریفک کو لائف ٹائم کمائی میں تبدیل کریں!
+
+<b>Player Offer:</b>
+🎁 First deposit پر 10,000 تک 100% bonus!
+🔥 Promo Code: ${promo}
+📞 24/7 dedicated player support.
+
+<b>Affiliate Benefits:</b>
+✅ Attractive revenue share deal
+✅ Secure and on-time payments
+✅ Tracking and marketing materials access
+
+📲 Promo code ${promo} کے ساتھ آج ہی traffic drive شروع کریں!
+
+<b>App download link:</b> 👇`;
+  }
+
+  return `🤝 <b>7starswin Affiliate Program</b> — Turn your traffic into lifetime earnings!
+
+Join one of the most trusted bookmaker brands, <b>7starswin</b>, and start earning more from your traffic.
+
+<b>Player Offer:</b>
+🎁 100% bonus up to 10,000 on first deposit!
+🔥 Player Promo Code: ${promo}
+📞 24/7 dedicated player support.
+
+<b>Affiliate Benefits:</b>
+✅ Attractive revenue share deal
+✅ Safe and on-time payments
+✅ Full tracking and marketing materials access
+
+📲 Start driving traffic today with promo code ${promo}!
+
+<b>App download link:</b> 👇`;
 }
 
 async function generateBanners(ctx, promoCode, lang, category) {
@@ -229,9 +313,16 @@ async function generateBanners(ctx, promoCode, lang, category) {
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
 
   await ctx.reply(
-    `✅ Done!\n\n🎁 Promo: ${promoCode}\n🌍 Language: ${lang.toUpperCase()}\n📂 Category: ${category}\n🖼 Sent: ${sent}\n❌ Failed: ${failed}\n⚡ Time: ${seconds}s`,
-    mainKeyboard(ctx)
+    `✅ Done!\n\n🎁 Promo: ${promoCode}\n🌍 Language: ${lang.toUpperCase()}\n📂 Category: ${category}\n🖼 Sent: ${sent}\n❌ Failed: ${failed}\n⚡ Time: ${seconds}s`
   );
+
+  await ctx.reply(promoMessage(lang, promoCode), {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard([
+      [Markup.button.url('📱 Download App', APP_DOWNLOAD_URL)],
+      [Markup.button.callback('🎨 Generate Promo Banner', 'promo_start')]
+    ])
+  });
 
   for (const adminId of ADMIN_IDS) {
     try {
@@ -245,7 +336,6 @@ async function generateBanners(ctx, promoCode, lang, category) {
 
 bot.start(async ctx => {
   saveUser(ctx);
-
   await ctx.reply(
     `👋 Welcome ${ctx.from.first_name || ''}\n\nGenerate promo banners instantly.`,
     mainKeyboard(ctx)
@@ -256,69 +346,51 @@ bot.action('main_menu', async ctx => {
   await ctx.answerCbQuery();
   saveUser(ctx);
   sessions.delete(String(ctx.from.id));
-
   await ctx.reply('🏠 Main Menu', mainKeyboard(ctx));
 });
 
 bot.action('promo_start', async ctx => {
   await ctx.answerCbQuery();
   saveUser(ctx);
-
   const s = getSession(ctx.from.id);
   s.flow = 'promo';
-
   await ctx.reply('🌍 Select banner language:', languageKeyboard());
 });
 
 bot.action(/^promo_lang_(.+)$/, async ctx => {
   await ctx.answerCbQuery();
-
   const lang = ctx.match[1];
-
   const s = getSession(ctx.from.id);
   s.lang = lang;
-
   await ctx.reply('📂 Select banner category:', categoryKeyboard());
 });
 
 bot.action(/^promo_category_(.+)$/, async ctx => {
   await ctx.answerCbQuery();
-
   const category = ctx.match[1];
-
   const s = getSession(ctx.from.id);
   s.category = category;
   s.waitingPromo = true;
-
   await ctx.reply('✏️ Send promo code now.\n\nExample: WELCOME20');
 });
 
 bot.action('bot_status', async ctx => {
   await ctx.answerCbQuery();
-
-  if (!isAdmin(ctx)) {
-    return ctx.reply('⛔ Admin only');
-  }
+  if (!isAdmin(ctx)) return ctx.reply('⛔ Admin only');
 
   const uptime = Math.floor(process.uptime());
-  const minutes = Math.floor(uptime / 60);
-  const seconds = uptime % 60;
 
   await ctx.reply(
-    `📊 Bot Status\n\n✅ Status: Running\n👥 Users this session: ${users.size}\n🧠 Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB\n⏱ Uptime: ${minutes}m ${seconds}s\n🖼 Banner count setting: ${DEFAULT_BANNER_COUNT}\n🌐 Base URL: ${BANNER_BASE_URL || 'Missing'}`,
+    `📊 Bot Status\n\n✅ Status: Running\n👥 Users this session: ${users.size}\n🧠 Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB\n⏱ Uptime: ${Math.floor(uptime / 60)}m ${uptime % 60}s\n🖼 Banner count: ${DEFAULT_BANNER_COUNT}\n🌐 Base URL: ${BANNER_BASE_URL || 'Missing'}`,
     mainKeyboard(ctx)
   );
 });
 
 bot.action('broadcast_start', async ctx => {
   await ctx.answerCbQuery();
-
-  if (!isAdmin(ctx)) {
-    return ctx.reply('⛔ Admin only');
-  }
+  if (!isAdmin(ctx)) return ctx.reply('⛔ Admin only');
 
   const s = getSession(ctx.from.id);
-  s.flow = 'broadcast';
   s.waitingBroadcast = true;
 
   await ctx.reply('📢 Send broadcast text, photo, or video.\n\nI will show preview before sending.');
@@ -327,22 +399,15 @@ bot.action('broadcast_start', async ctx => {
 bot.action('broadcast_cancel', async ctx => {
   await ctx.answerCbQuery();
   sessions.delete(String(ctx.from.id));
-
   await ctx.reply('❌ Broadcast cancelled.', mainKeyboard(ctx));
 });
 
 bot.action('broadcast_confirm', async ctx => {
   await ctx.answerCbQuery();
-
-  if (!isAdmin(ctx)) {
-    return ctx.reply('⛔ Admin only');
-  }
+  if (!isAdmin(ctx)) return ctx.reply('⛔ Admin only');
 
   const s = getSession(ctx.from.id);
-
-  if (!s.broadcast) {
-    return ctx.reply('⚠️ No broadcast message found.');
-  }
+  if (!s.broadcast) return ctx.reply('⚠️ No broadcast message found.');
 
   const userIds = Array.from(users.keys());
   let sent = 0;
@@ -353,9 +418,7 @@ bot.action('broadcast_confirm', async ctx => {
   for (const userId of userIds) {
     try {
       if (s.broadcast.type === 'text') {
-        await bot.telegram.sendMessage(userId, s.broadcast.text, {
-          parse_mode: 'HTML'
-        });
+        await bot.telegram.sendMessage(userId, s.broadcast.text, { parse_mode: 'HTML' });
       }
 
       if (s.broadcast.type === 'photo') {
@@ -380,11 +443,7 @@ bot.action('broadcast_confirm', async ctx => {
   }
 
   sessions.delete(String(ctx.from.id));
-
-  await ctx.reply(
-    `✅ Broadcast complete.\n\nSent: ${sent}\nFailed: ${failed}`,
-    mainKeyboard(ctx)
-  );
+  await ctx.reply(`✅ Broadcast complete.\n\nSent: ${sent}\nFailed: ${failed}`, mainKeyboard(ctx));
 });
 
 bot.on('message', async ctx => {
@@ -394,11 +453,7 @@ bot.on('message', async ctx => {
 
   if (s.waitingBroadcast && isAdmin(ctx)) {
     if (ctx.message.text) {
-      s.broadcast = {
-        type: 'text',
-        text: ctx.message.text
-      };
-
+      s.broadcast = { type: 'text', text: ctx.message.text };
       s.waitingBroadcast = false;
 
       return ctx.reply(
@@ -409,13 +464,11 @@ bot.on('message', async ctx => {
 
     if (ctx.message.photo) {
       const photo = ctx.message.photo[ctx.message.photo.length - 1];
-
       s.broadcast = {
         type: 'photo',
         fileId: photo.file_id,
         caption: ctx.message.caption || ''
       };
-
       s.waitingBroadcast = false;
 
       return ctx.replyWithPhoto(photo.file_id, {
@@ -430,7 +483,6 @@ bot.on('message', async ctx => {
         fileId: ctx.message.video.file_id,
         caption: ctx.message.caption || ''
       };
-
       s.waitingBroadcast = false;
 
       return ctx.replyWithVideo(ctx.message.video.file_id, {
@@ -458,10 +510,7 @@ bot.on('message', async ctx => {
       await generateBanners(ctx, promoCode, lang, category);
     } catch (error) {
       console.log(error);
-
-      await ctx.reply(
-        '⚠️ Error generating banners. Please check hosting image links and BANNER_BASE_URL.'
-      );
+      await ctx.reply('⚠️ Error generating banners. Please check hosting image links and BANNER_BASE_URL.');
     }
 
     return;
@@ -476,7 +525,6 @@ bot.catch((err, ctx) => {
 });
 
 bot.launch();
-
 console.log('Bot running...');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
