@@ -3,18 +3,18 @@ require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
 const sharp = require('sharp');
-const JSZip = require('jszip');
-const fs = require('fs/promises');
-const path = require('path');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
+
 const ADMIN_IDS = (process.env.ADMIN_IDS || '')
   .split(',')
   .map(x => x.trim());
 
-const BANNER_BASE_URL = process.env.BANNER_BASE_URL;
+const BANNER_BASE_URL =
+  process.env.BANNER_BASE_URL;
+
 const DEFAULT_BANNER_COUNT = Number(
-  process.env.DEFAULT_BANNER_COUNT || 10
+  process.env.DEFAULT_BANNER_COUNT || 2
 );
 
 const bot = new Telegraf(BOT_TOKEN);
@@ -25,6 +25,7 @@ function getSession(userId) {
   if (!sessions.has(userId)) {
     sessions.set(userId, {});
   }
+
   return sessions.get(userId);
 }
 
@@ -54,34 +55,53 @@ async function getBannerUrls(
   category = 'all'
 ) {
   if (!BANNER_BASE_URL) {
-    throw new Error('BANNER_BASE_URL missing');
+    throw new Error(
+      'BANNER_BASE_URL missing'
+    );
   }
 
-  const base = BANNER_BASE_URL.replace(/\/$/, '');
+  const base =
+    BANNER_BASE_URL.replace(/\/$/, '');
 
   const langCode =
-    lang === 'hi' ? 'in' : lang;
+    lang === 'hi'
+      ? 'in'
+      : lang;
 
   function makeUrls(prefix) {
     return Array.from(
-      { length: DEFAULT_BANNER_COUNT },
+      {
+        length:
+          DEFAULT_BANNER_COUNT
+      },
       (_, i) =>
         `${base}/${prefix}${langCode}-${i + 1}.jpg`
     );
   }
 
+  // SPORTS
   if (category === 'sports') {
-    return makeUrls('sports-banners-');
+    return makeUrls(
+      'sports-banners-'
+    );
   }
 
+  // CASINO
   if (category === 'casino') {
-    return makeUrls('casino-banners-');
+    return makeUrls(
+      'casino-banners-'
+    );
   }
 
+  // ALL
   return [
     ...makeUrls('banners-'),
-    ...makeUrls('sports-banners-'),
-    ...makeUrls('casino-banners-')
+    ...makeUrls(
+      'sports-banners-'
+    ),
+    ...makeUrls(
+      'casino-banners-'
+    )
   ];
 }
 
@@ -99,18 +119,26 @@ async function addPromoText(
 ) {
   const image = sharp(inputBuffer);
 
-  const meta = await image.metadata();
+  const meta =
+    await image.metadata();
 
-  const width = meta.width || 1080;
-  const height = meta.height || 1080;
+  const width =
+    meta.width || 1080;
+
+  const height =
+    meta.height || 1080;
 
   const fontSize = Math.max(
-    48,
-    Math.min(width * 0.085, 110)
+    50,
+    Math.min(
+      width * 0.085,
+      120
+    )
   );
 
   const svg = `
   <svg width="${width}" height="${height}">
+  
     <text
       x="50%"
       y="91%"
@@ -126,6 +154,7 @@ async function addPromoText(
     >
       ${promoCode}
     </text>
+
   </svg>
   `;
 
@@ -137,13 +166,15 @@ async function addPromoText(
         left: 0
       }
     ])
-    .jpeg({ quality: 95 })
+    .jpeg({
+      quality: 95
+    })
     .toBuffer();
 }
 
 bot.start(async ctx => {
   await ctx.reply(
-    '🎨 Select banner language:',
+    '🌍 Select Banner Language',
     Markup.inlineKeyboard([
       [
         Markup.button.callback(
@@ -155,6 +186,7 @@ bot.start(async ctx => {
           'promo_lang_bn'
         )
       ],
+
       [
         Markup.button.callback(
           '🇮🇳 Hindi',
@@ -169,42 +201,51 @@ bot.start(async ctx => {
   );
 });
 
-bot.action(/^promo_lang_(.+)$/, async ctx => {
-  await ctx.answerCbQuery();
+bot.action(
+  /^promo_lang_(.+)$/,
+  async ctx => {
+    await ctx.answerCbQuery();
 
-  const lang = ctx.match[1];
+    const lang =
+      ctx.match[1];
 
-  const session = getSession(ctx.from.id);
+    const session =
+      getSession(ctx.from.id);
 
-  session.lang = lang;
+    session.lang = lang;
 
-  await ctx.reply(
-    '📂 Select banner category:',
-    categoryKeyboard()
-  );
-});
+    await ctx.reply(
+      '📂 Select Banner Category',
+      categoryKeyboard()
+    );
+  }
+);
 
 bot.action(
   /^promo_category_(.+)$/,
   async ctx => {
     await ctx.answerCbQuery();
 
-    const category = ctx.match[1];
+    const category =
+      ctx.match[1];
 
-    const session = getSession(ctx.from.id);
+    const session =
+      getSession(ctx.from.id);
 
-    session.category = category;
+    session.category =
+      category;
 
     session.waitingPromo = true;
 
     await ctx.reply(
-      '✏️ Send your promo code now.\n\nExample: WELCOME100'
+      '✏️ Send Promo Code\n\nExample: WELCOME100'
     );
   }
 );
 
 bot.on('text', async ctx => {
-  const session = getSession(ctx.from.id);
+  const session =
+    getSession(ctx.from.id);
 
   if (!session.waitingPromo) {
     return;
@@ -212,36 +253,47 @@ bot.on('text', async ctx => {
 
   session.waitingPromo = false;
 
-  const promoCode = ctx.message.text
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .slice(0, 15);
+  const promoCode =
+    ctx.message.text
+      .trim()
+      .toUpperCase()
+      .replace(
+        /[^A-Z0-9]/g,
+        ''
+      )
+      .slice(0, 15);
 
-  const lang = session.lang;
-  const category = session.category;
+  const lang =
+    session.lang;
+
+  const category =
+    session.category;
 
   await ctx.reply(
     `⏳ Generating banners for ${promoCode}`
   );
 
   try {
-    const urls = await getBannerUrls(
-      lang,
-      category
-    );
+    const urls =
+      await getBannerUrls(
+        lang,
+        category
+      );
 
     const media = [];
 
-    const zip = new JSZip();
-
     let count = 0;
 
-    for (let i = 0; i < urls.length; i++) {
+    for (
+      let i = 0;
+      i < urls.length;
+      i++
+    ) {
       try {
-        const buffer = await downloadBuffer(
-          urls[i]
-        );
+        const buffer =
+          await downloadBuffer(
+            urls[i]
+          );
 
         const finalImage =
           await addPromoText(
@@ -249,23 +301,25 @@ bot.on('text', async ctx => {
             promoCode
           );
 
-        zip.file(
-          `${promoCode}-${i + 1}.jpg`,
-          finalImage
-        );
-
         media.push({
           type: 'photo',
           media: {
-            source: finalImage
+            source:
+              finalImage
           }
         });
 
         count++;
 
-        if (media.length === 10) {
+        // Telegram limit = 10
+        if (
+          media.length === 10
+        ) {
           await ctx.replyWithMediaGroup(
-            media.splice(0, 10)
+            media.splice(
+              0,
+              10
+            )
           );
         }
       } catch (err) {
@@ -277,34 +331,32 @@ bot.on('text', async ctx => {
     }
 
     if (media.length > 0) {
-      await ctx.replyWithMediaGroup(media);
+      await ctx.replyWithMediaGroup(
+        media
+      );
     }
 
-    const zipBuffer =
-      await zip.generateAsync({
-        type: 'nodebuffer'
-      });
-
-    await ctx.replyWithDocument({
-      source: zipBuffer,
-      filename: `${promoCode}.zip`
-    });
-
     await ctx.reply(
-      `✅ Done\n\nGenerated: ${count} banners`
+      `✅ Done\n\nGenerated ${count} banners`
     );
 
+    // ADMIN LOG
     for (const adminId of ADMIN_IDS) {
       try {
         await bot.telegram.sendMessage(
           adminId,
+
           `🎨 Banner Generated
 
-User: ${ctx.from.first_name}
-Promo: ${promoCode}
-Language: ${lang}
-Category: ${category}
-Generated: ${count}`
+👤 User: ${ctx.from.first_name}
+
+🎁 Promo: ${promoCode}
+
+🌍 Language: ${lang}
+
+📂 Category: ${category}
+
+🖼 Generated: ${count}`
         );
       } catch (e) {}
     }
