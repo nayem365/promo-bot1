@@ -7,7 +7,7 @@ const sharp = require('sharp');
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(x => x.trim()).filter(Boolean);
 const BANNER_BASE_URL = process.env.BANNER_BASE_URL;
-const DEFAULT_BANNER_COUNT = Number(process.env.DEFAULT_BANNER_COUNT || 2);
+const DEFAULT_BANNER_COUNT = Math.min(Number(process.env.DEFAULT_BANNER_COUNT || 20), 20);
 const APP_DOWNLOAD_URL = process.env.APP_DOWNLOAD_URL || 'https://7starswin.com/downloads/androidclient/releases_android/7StarsWin/site/7StarsWin.apk';
 
 if (!BOT_TOKEN) throw new Error('BOT_TOKEN missing');
@@ -126,13 +126,13 @@ async function getBannerUrls(lang, category = 'all') {
     ...makeUrls('banners-'),
     ...makeUrls('sports-banners-'),
     ...makeUrls('casino-banners-')
-  ];
+  ].slice(0, 20);
 }
 
 async function downloadBuffer(url) {
   const res = await axios.get(url, {
     responseType: 'arraybuffer',
-    timeout: 3500,
+    timeout: 4000,
     validateStatus: s => s >= 200 && s < 300
   });
 
@@ -142,15 +142,14 @@ async function downloadBuffer(url) {
 function getTextSettings(width, promoCode) {
   const len = promoCode.length;
 
-  let fontSize = width * 0.088;
-
-  if (len >= 9) fontSize = width * 0.078;
-  if (len >= 11) fontSize = width * 0.068;
-  if (len >= 14) fontSize = width * 0.058;
+  let fontSize = width * 0.065;
+  if (len <= 6) fontSize = width * 0.075;
+  if (len >= 10) fontSize = width * 0.058;
+  if (len >= 13) fontSize = width * 0.050;
 
   return {
-    fontSize: Math.max(50, Math.min(fontSize, 108)),
-    y: '91.8%'
+    fontSize: Math.max(42, Math.min(fontSize, 78)),
+    y: '84.7%'
   };
 }
 
@@ -167,7 +166,7 @@ async function addPromoText(inputBuffer, promoCode) {
   <svg width="${width}" height="${height}">
     <defs>
       <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="6" stdDeviation="4" flood-color="#000000" flood-opacity="0.95"/>
+        <feDropShadow dx="0" dy="5" stdDeviation="3" flood-color="#000000" flood-opacity="0.95"/>
       </filter>
     </defs>
 
@@ -181,7 +180,7 @@ async function addPromoText(inputBuffer, promoCode) {
       font-weight="900"
       fill="#ffffff"
       stroke="#000000"
-      stroke-width="6"
+      stroke-width="5"
       paint-order="stroke fill"
       letter-spacing="2"
       filter="url(#shadow)"
@@ -190,7 +189,7 @@ async function addPromoText(inputBuffer, promoCode) {
 
   return image
     .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
-    .jpeg({ quality: 88, mozjpeg: true })
+    .jpeg({ quality: 86, mozjpeg: true })
     .toBuffer();
 }
 
@@ -199,7 +198,7 @@ async function processOneBanner(url, promoCode, index) {
     const raw = await downloadBuffer(url);
     const image = await addPromoText(raw, promoCode);
     return { ok: true, image, index };
-  } catch (error) {
+  } catch {
     return { ok: false, index, url };
   }
 }
@@ -210,72 +209,32 @@ function promoMessage(lang, promoCode) {
   if (lang === 'bn') {
     return `🤝 <b>7starswin Affiliate Program</b> — আপনার ট্রাফিককে রূপান্তর করুন লাইফটাইম উপার্জনে!
 
-আপনি কি আপনার ট্রাফিক থেকে সর্বোচ্চ রেভিনিউ জেনারেট করতে চান? বিশ্বের অন্যতম বিশ্বস্ত বুকমেকার কোম্পানি <b>7starswin</b>-এর সাথে পার্টনার হিসেবে যোগ দিন!
-
 <b>আমরা আপনার প্লেয়ারদের জন্য দিচ্ছি আকর্ষণীয় অফার:</b>
-🎁 প্লেয়ার বোনাস: প্রথম ডিপোজিটে ১০,০০০ টাকা পর্যন্ত ১০০% বোনাস!
+🎁 প্রথম ডিপোজিটে ১০,০০০ টাকা পর্যন্ত ১০০% বোনাস!
 🔥 প্লেয়ার প্রোমো কোড: ${promo}
-📞 সাপোর্ট: ২৪ ঘণ্টা ডেডিকেটেড প্লেয়ার সাপোর্ট।
+📞 ২৪ ঘণ্টা ডেডিকেটেড প্লেয়ার সাপোর্ট।
 
 <b>📉 অ্যাফিলিয়েট হিসেবে আপনার সুবিধা:</b>
-✅ মার্কেট সেরা আকর্ষণীয় রেভিনিউ শেয়ার ডিল
-✅ সময়মতো এবং শতভাগ নিরাপদ পেমেন্ট উইথড্রয়াল
-✅ ট্র্যাকিং এবং মার্কেটিং ম্যাটেরিয়ালসের সম্পূর্ণ অ্যাক্সেস
+✅ আকর্ষণীয় রেভিনিউ শেয়ার ডিল
+✅ নিরাপদ ও সময়মতো পেমেন্ট
+✅ ট্র্যাকিং ও মার্কেটিং ম্যাটেরিয়ালস
 
-📲 আপনার প্রোমো কোড ${promo} ব্যবহার করে আজই ট্রাফিক ড্রাইভ করা শুরু করুন!
+📲 আপনার প্রোমো কোড ${promo} ব্যবহার করে আজই ট্রাফিক ড্রাইভ শুরু করুন!
 
 <b>অ্যাপ ডাউনলোড লিংক:</b> 👇`;
   }
 
-  if (lang === 'hi') {
-    return `🤝 <b>7starswin Affiliate Program</b> — अपने ट्रैफिक को लाइफटाइम कमाई में बदलें!
-
-<b>Player Offer:</b>
-🎁 First deposit पर 10,000 तक 100% bonus!
-🔥 Promo Code: ${promo}
-📞 24/7 dedicated player support.
-
-<b>Affiliate Benefits:</b>
-✅ Attractive revenue share deal
-✅ Secure and on-time payments
-✅ Full tracking and marketing materials access
-
-📲 Promo code ${promo} से आज ही traffic drive करना शुरू करें!
-
-<b>App download link:</b> 👇`;
-  }
-
-  if (lang === 'pk') {
-    return `🤝 <b>7starswin Affiliate Program</b> — اپنی ٹریفک کو لائف ٹائم کمائی میں تبدیل کریں!
-
-<b>Player Offer:</b>
-🎁 First deposit پر 10,000 تک 100% bonus!
-🔥 Promo Code: ${promo}
-📞 24/7 dedicated player support.
-
-<b>Affiliate Benefits:</b>
-✅ Attractive revenue share deal
-✅ Secure and on-time payments
-✅ Tracking and marketing materials access
-
-📲 Promo code ${promo} کے ساتھ آج ہی traffic drive شروع کریں!
-
-<b>App download link:</b> 👇`;
-  }
-
   return `🤝 <b>7starswin Affiliate Program</b> — Turn your traffic into lifetime earnings!
-
-Join one of the most trusted bookmaker brands, <b>7starswin</b>, and start earning more from your traffic.
 
 <b>Player Offer:</b>
 🎁 100% bonus up to 10,000 on first deposit!
-🔥 Player Promo Code: ${promo}
-📞 24/7 dedicated player support.
+🔥 Promo Code: ${promo}
+📞 24/7 dedicated support.
 
 <b>Affiliate Benefits:</b>
 ✅ Attractive revenue share deal
 ✅ Safe and on-time payments
-✅ Full tracking and marketing materials access
+✅ Full tracking and marketing materials
 
 📲 Start driving traffic today with promo code ${promo}!
 
@@ -285,7 +244,7 @@ Join one of the most trusted bookmaker brands, <b>7starswin</b>, and start earni
 async function generateBanners(ctx, promoCode, lang, category) {
   const started = Date.now();
 
-  await ctx.reply(`⚡ Generating ${category.toUpperCase()} banners for: ${promoCode}`);
+  await ctx.reply(`⚡ Generating banners for: ${promoCode}`);
 
   const urls = await getBannerUrls(lang, category);
 
@@ -352,24 +311,21 @@ bot.action('main_menu', async ctx => {
 bot.action('promo_start', async ctx => {
   await ctx.answerCbQuery();
   saveUser(ctx);
-  const s = getSession(ctx.from.id);
-  s.flow = 'promo';
+  getSession(ctx.from.id).flow = 'promo';
   await ctx.reply('🌍 Select banner language:', languageKeyboard());
 });
 
 bot.action(/^promo_lang_(.+)$/, async ctx => {
   await ctx.answerCbQuery();
-  const lang = ctx.match[1];
   const s = getSession(ctx.from.id);
-  s.lang = lang;
+  s.lang = ctx.match[1];
   await ctx.reply('📂 Select banner category:', categoryKeyboard());
 });
 
 bot.action(/^promo_category_(.+)$/, async ctx => {
   await ctx.answerCbQuery();
-  const category = ctx.match[1];
   const s = getSession(ctx.from.id);
-  s.category = category;
+  s.category = ctx.match[1];
   s.waitingPromo = true;
   await ctx.reply('✏️ Send promo code now.\n\nExample: WELCOME20');
 });
@@ -381,7 +337,7 @@ bot.action('bot_status', async ctx => {
   const uptime = Math.floor(process.uptime());
 
   await ctx.reply(
-    `📊 Bot Status\n\n✅ Status: Running\n👥 Users this session: ${users.size}\n🧠 Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB\n⏱ Uptime: ${Math.floor(uptime / 60)}m ${uptime % 60}s\n🖼 Banner count: ${DEFAULT_BANNER_COUNT}\n🌐 Base URL: ${BANNER_BASE_URL || 'Missing'}`,
+    `📊 Bot Status\n\n✅ Status: Running\n👥 Users this session: ${users.size}\n🧠 Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB\n⏱ Uptime: ${Math.floor(uptime / 60)}m ${uptime % 60}s\n🖼 Max banner count: ${DEFAULT_BANNER_COUNT}\n🌐 Base URL: ${BANNER_BASE_URL || 'Missing'}`,
     mainKeyboard(ctx)
   );
 });
@@ -455,22 +411,13 @@ bot.on('message', async ctx => {
     if (ctx.message.text) {
       s.broadcast = { type: 'text', text: ctx.message.text };
       s.waitingBroadcast = false;
-
-      return ctx.reply(
-        `📢 Broadcast Preview:\n\n${ctx.message.text}`,
-        broadcastConfirmKeyboard()
-      );
+      return ctx.reply(`📢 Broadcast Preview:\n\n${ctx.message.text}`, broadcastConfirmKeyboard());
     }
 
     if (ctx.message.photo) {
       const photo = ctx.message.photo[ctx.message.photo.length - 1];
-      s.broadcast = {
-        type: 'photo',
-        fileId: photo.file_id,
-        caption: ctx.message.caption || ''
-      };
+      s.broadcast = { type: 'photo', fileId: photo.file_id, caption: ctx.message.caption || '' };
       s.waitingBroadcast = false;
-
       return ctx.replyWithPhoto(photo.file_id, {
         caption: `📢 Broadcast Preview\n\n${ctx.message.caption || ''}`,
         ...broadcastConfirmKeyboard()
@@ -478,13 +425,8 @@ bot.on('message', async ctx => {
     }
 
     if (ctx.message.video) {
-      s.broadcast = {
-        type: 'video',
-        fileId: ctx.message.video.file_id,
-        caption: ctx.message.caption || ''
-      };
+      s.broadcast = { type: 'video', fileId: ctx.message.video.file_id, caption: ctx.message.caption || '' };
       s.waitingBroadcast = false;
-
       return ctx.replyWithVideo(ctx.message.video.file_id, {
         caption: `📢 Broadcast Preview\n\n${ctx.message.caption || ''}`,
         ...broadcastConfirmKeyboard()
@@ -503,11 +445,8 @@ bot.on('message', async ctx => {
       return ctx.reply('⚠️ Invalid promo code. Use at least 3 letters or numbers.');
     }
 
-    const lang = s.lang || 'en';
-    const category = s.category || 'all';
-
     try {
-      await generateBanners(ctx, promoCode, lang, category);
+      await generateBanners(ctx, promoCode, s.lang || 'en', s.category || 'all');
     } catch (error) {
       console.log(error);
       await ctx.reply('⚠️ Error generating banners. Please check hosting image links and BANNER_BASE_URL.');
