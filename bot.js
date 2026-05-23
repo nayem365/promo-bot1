@@ -7,7 +7,7 @@ const sharp = require('sharp');
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(x => x.trim()).filter(Boolean);
 const BANNER_BASE_URL = process.env.BANNER_BASE_URL;
-const DEFAULT_BANNER_COUNT = Math.min(Number(process.env.DEFAULT_BANNER_COUNT || 20), 20);
+const MAX_SCAN_COUNT = Number(process.env.MAX_SCAN_COUNT || 100);
 const APP_DOWNLOAD_URL = process.env.APP_DOWNLOAD_URL || 'https://7starswin.com/downloads/androidclient/releases_android/7StarsWin/site/7StarsWin.apk';
 
 if (!BOT_TOKEN) throw new Error('BOT_TOKEN missing');
@@ -109,30 +109,74 @@ function escapeHtml(text) {
 async function getBannerUrls(lang, category = 'all') {
   if (!BANNER_BASE_URL) throw new Error('BANNER_BASE_URL missing');
 
-  const base = BANNER_BASE_URL.replace(/\/$/, '');
   const langCode = lang === 'hi' ? 'in' : lang;
 
-  function makeUrls(prefix) {
-    return Array.from(
-      { length: DEFAULT_BANNER_COUNT },
-      (_, i) => `${base}/${prefix}${langCode}-${i + 1}.jpg`
-    );
+  const prefixes =
+    category === 'sports'
+      ? ['sports-banners-']
+      : category === 'casino'
+      ? ['casino-banners-']
+      : ['banners-', 'sports-banners-', 'casino-banners-'];
+
+  const rawMatch = BANNER_BASE_URL.match(
+    /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/
+  );
+
+  if (rawMatch) {
+    const [, owner, repo, branch, folder] = rawMatch;
+
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${folder}?ref=${branch}`;
+
+    const res = await axios.get(apiUrl, {
+      timeout: 5000,
+      headers: { 'User-Agent': 'promo-banner-bot' }
+    });
+
+    const files = res.data
+      .filter(file => file.type === 'file')
+      .map(file => file.name)
+      .filter(name =>
+        prefixes.some(prefix =>
+          name.startsWith(`${prefix}${langCode}-`) &&
+          /\.(jpg|jpeg|png)$/i.test(name)
+        )
+      )
+      .sort((a, b) => {
+        const na = Number(a.match(/-(\d+)\.(jpg|jpeg|png)$/i)?.[1] || 0);
+        const nb = Number(b.match(/-(\d+)\.(jpg|jpeg|png)$/i)?.[1] || 0);
+        return na - nb;
+      });
+
+    return files.map(file => `${BANNER_BASE_URL.replace(/\/$/, '')}/${file}`);
   }
 
-  if (category === 'sports') return makeUrls('sports-banners-');
-  if (category === 'casino') return makeUrls('casino-banners-');
+  const base = BANNER_BASE_URL.replace(/\/$/, '');
+  const possibleUrls = [];
 
-  return [
-    ...makeUrls('banners-'),
-    ...makeUrls('sports-banners-'),
-    ...makeUrls('casino-banners-')
-  ].slice(0, 20);
+  for (const prefix of prefixes) {
+    for (let i = 1; i <= MAX_SCAN_COUNT; i++) {
+      possibleUrls.push(`${base}/${prefix}${langCode}-${i}.jpg`);
+    }
+  }
+
+  const checked = await Promise.all(
+    possibleUrls.map(async url => {
+      try {
+        await axios.head(url, { timeout: 2000 });
+        return url;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return checked.filter(Boolean);
 }
 
 async function downloadBuffer(url) {
   const res = await axios.get(url, {
     responseType: 'arraybuffer',
-    timeout: 4000,
+    timeout: 5000,
     validateStatus: s => s >= 200 && s < 300
   });
 
@@ -142,14 +186,17 @@ async function downloadBuffer(url) {
 function getTextSettings(width, promoCode) {
   const len = promoCode.length;
 
-  let fontSize = width * 0.065;
-  if (len <= 6) fontSize = width * 0.075;
-  if (len >= 10) fontSize = width * 0.058;
-  if (len >= 13) fontSize = width * 0.050;
+  let fontSize = width * 0.060;
+
+  if (len <= 6) fontSize = width * 0.070;
+  if (len >= 9) fontSize = width * 0.055;
+  if (len >= 11) fontSize = width * 0.050;
+  if (len >= 13) fontSize = width * 0.045;
 
   return {
-    fontSize: Math.max(42, Math.min(fontSize, 78)),
-    y: '84.7%'
+    fontSize: Math.max(38, Math.min(fontSize, 76)),
+    x: '50%',
+    y: '85.2%'
   };
 }
 
@@ -159,19 +206,20 @@ async function addPromoText(inputBuffer, promoCode) {
 
   const width = meta.width || 1080;
   const height = meta.height || 1080;
-  const { fontSize, y } = getTextSettings(width, promoCode);
+
+  const { fontSize, x, y } = getTextSettings(width, promoCode);
   const text = escapeXml(promoCode);
 
   const svg = `
   <svg width="${width}" height="${height}">
     <defs>
-      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%">
         <feDropShadow dx="0" dy="5" stdDeviation="3" flood-color="#000000" flood-opacity="0.95"/>
       </filter>
     </defs>
 
     <text
-      x="50%"
+      x="${x}"
       y="${y}"
       text-anchor="middle"
       dominant-baseline="middle"
@@ -189,7 +237,7 @@ async function addPromoText(inputBuffer, promoCode) {
 
   return image
     .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
-    .jpeg({ quality: 86, mozjpeg: true })
+    .jpeg({ quality: 88, mozjpeg: true })
     .toBuffer();
 }
 
@@ -224,6 +272,42 @@ function promoMessage(lang, promoCode) {
 <b>অ্যাপ ডাউনলোড লিংক:</b> 👇`;
   }
 
+  if (lang === 'hi') {
+    return `🤝 <b>7starswin Affiliate Program</b> — अपने ट्रैफिक को लाइफटाइम कमाई में बदलें!
+
+<b>Player Offer:</b>
+🎁 First deposit पर 10,000 तक 100% bonus!
+🔥 Promo Code: ${promo}
+📞 24/7 dedicated support.
+
+<b>Affiliate Benefits:</b>
+✅ Attractive revenue share deal
+✅ Safe and on-time payments
+✅ Full tracking and marketing materials
+
+📲 Promo code ${promo} से आज ही traffic drive शुरू करें!
+
+<b>App download link:</b> 👇`;
+  }
+
+  if (lang === 'pk') {
+    return `🤝 <b>7starswin Affiliate Program</b> — اپنی ٹریفک کو لائف ٹائم کمائی میں تبدیل کریں!
+
+<b>Player Offer:</b>
+🎁 First deposit پر 10,000 تک 100% bonus!
+🔥 Promo Code: ${promo}
+📞 24/7 dedicated support.
+
+<b>Affiliate Benefits:</b>
+✅ Attractive revenue share deal
+✅ Safe and on-time payments
+✅ Tracking and marketing materials
+
+📲 Promo code ${promo} کے ساتھ آج ہی traffic drive شروع کریں!
+
+<b>App download link:</b> 👇`;
+  }
+
   return `🤝 <b>7starswin Affiliate Program</b> — Turn your traffic into lifetime earnings!
 
 <b>Player Offer:</b>
@@ -244,9 +328,13 @@ function promoMessage(lang, promoCode) {
 async function generateBanners(ctx, promoCode, lang, category) {
   const started = Date.now();
 
-  await ctx.reply(`⚡ Generating banners for: ${promoCode}`);
+  await ctx.reply(`⚡ Finding and generating all ${category.toUpperCase()} banners for: ${promoCode}`);
 
   const urls = await getBannerUrls(lang, category);
+
+  if (!urls.length) {
+    return ctx.reply('⚠️ No banners found. Please check file names and BANNER_BASE_URL.');
+  }
 
   const results = await Promise.all(
     urls.map((url, index) => processOneBanner(url, promoCode, index))
@@ -337,7 +425,7 @@ bot.action('bot_status', async ctx => {
   const uptime = Math.floor(process.uptime());
 
   await ctx.reply(
-    `📊 Bot Status\n\n✅ Status: Running\n👥 Users this session: ${users.size}\n🧠 Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB\n⏱ Uptime: ${Math.floor(uptime / 60)}m ${uptime % 60}s\n🖼 Max banner count: ${DEFAULT_BANNER_COUNT}\n🌐 Base URL: ${BANNER_BASE_URL || 'Missing'}`,
+    `📊 Bot Status\n\n✅ Status: Running\n👥 Users this session: ${users.size}\n🧠 Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB\n⏱ Uptime: ${Math.floor(uptime / 60)}m ${uptime % 60}s\n🔎 Max scan count: ${MAX_SCAN_COUNT}\n🌐 Base URL: ${BANNER_BASE_URL || 'Missing'}`,
     mainKeyboard(ctx)
   );
 });
